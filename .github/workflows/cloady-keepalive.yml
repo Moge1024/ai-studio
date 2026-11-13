@@ -1,0 +1,31 @@
+# Cloady 保活：每天一次 ping 部署在 Cloady 上的应用地址，防止 7 天闲置暂停。
+# 应用 URL 放在密钥 CLOADY_APP_URL（仓库 Settings → Secrets and variables → Actions）。
+# 只做一次 GET，不传任何密钥；应用返回 2xx/3xx 即算成功。
+name: cloady-keepalive
+
+on:
+  schedule:
+    # 每天 UTC 01:30（北京时间 09:30），与 supabase-keepalive 错开半小时
+    - cron: "30 1 * * *"
+  workflow_dispatch: # 手动触发，部署后点一下验证
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Cloady app
+        env:
+          CLOADY_APP_URL: ${{ secrets.CLOADY_APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOADY_APP_URL" ]; then
+            echo "::error::Missing CLOADY_APP_URL secret"
+            exit 1
+          fi
+
+          echo "Pinging ${CLOADY_APP_URL}"
+          # -f：HTTP >= 400 时失败；--max-time 30：30 秒超时；只取响应头不下载正文
+          curl -fsSI --max-time 30 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" \
+            "$CLOADY_APP_URL"
+
+          echo "Cloady keepalive OK at $(date -u +%FT%TZ)"

@@ -1,0 +1,88 @@
+# 每日用量汇总：每天一次，汇总各服务能量化查到的用量，写进仓库内 usage-summary.md。
+# 简单可靠优先：只汇总能用公开/匿名接口查到的部分（Supabase 两张表的行数、Workers 网关
+# 当天转发计数说明），查不到的服务只列出入口链接，不猜数字、不编造。
+# 注意：本任务需要写回仓库，须在仓库 Settings → Actions → General 里把
+# Workflow permissions 设为 Read and write permissions，否则提交步骤会失败。
+name: daily-usage-summary
+
+on:
+  schedule:
+    # 每天 UTC 02:00（北京时间 10:00），在两个 keepalive 之后跑
+    - cron: "0 2 * * *"
+  workflow_dispatch: # 手动触发
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Collect usage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          DATE_UTC=$(date -u +%F)
+          OUT="usage-summary.md"
+
+          {
+            echo "# 每日用量汇总（UTC ${DATE_UTC}）"
+            echo
+            echo "> 由 .github/workflows/daily-usage-summary.yml 每天自动生成；查不到的项如实写“未接入”，不编造数字。"
+            echo
+          } > "$OUT"
+
+          # --- Supabase：tasks / usage_ledger 行数（PostgREST 的 Prefer: count=exact 只返回计数头）---
+          if [ -n "${SUPABASE_URL:-}" ] && [ -n "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "== Supabase counts =="
+            for TABLE in tasks usage_ledger file_records; do
+              COUNT=$(curl -fsS -o /dev/null -w "%{header_json}" \
+                "${SUPABASE_URL}/rest/v1/${TABLE}?select=id" \
+                -H "apikey: ${SUPABASE_ANON_KEY}" \
+                -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+                -H "Prefer: count=exact" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin).get('content-range',['/0'])[0].split('/')[-1])" 2>/dev/null || echo "查询失败")
+              echo "- Supabase \`${TABLE}\` 表行数：${COUNT}" >> "$OUT"
+              echo "${TABLE}: ${COUNT}"
+            done
+          else
+            echo "- Supabase：未配置 SUPABASE_URL / SUPABASE_ANON_KEY，无法查询" >> "$OUT"
+            echo "::warning::Supabase secrets missing, skipped counts"
+          fi
+
+          # --- 不能自动查的服务：只列入口，不猜数字 ---
+          {
+            echo
+            echo "## 需人工/控制台查看的用量"
+            echo
+            echo "- OpenRouter：免费档每天 50 次上限，看控制台用量页：https://openrouter.ai/activity"
+            echo "- Cloudflare Workers：每天 10 万次请求上限，看 Workers 指标页（Cloudflare 控制台 → Workers & Pages → gateway）"
+            echo "- Simular Box：免费测试已结束，$5 额度（约 50 小时，90 天有效），连续睡满 14 天会被删，看 Simular Box 控制台剩余额度"
+            echo "- Cloady：看 Cloady 控制台应用状态（keepalive 每天已 ping，见 cloady-keepalive 运行记录）"
+            echo "- Supabase 免费档：数据库 500MB、Storage 1GB 上限，看 Supabase 项目 Settings → Usage"
+            echo
+            echo "## 定时任务运行记录"
+            echo
+            echo "- supabase-keepalive：每天 UTC 01:00，见 Actions 页运行记录"
+            echo "- cloady-keepalive：每天 UTC 01:30，见 Actions 页运行记录"
+            echo
+            echo "生成时间（UTC）：$(date -u +%FT%TZ)"
+          } >> "$OUT"
+
+          cat "$OUT"
+
+      - name: Commit usage-summary.md
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add usage-summary.md
+          # 内容没变就不提交，避免空提交
+          git diff --cached --quiet && echo "No changes, skip commit" || {
+            git commit -m "chore: daily usage summary $(date -u +%F)"
+            git push
+          }

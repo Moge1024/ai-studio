@@ -1,0 +1,43 @@
+# Supabase 保活：每天一次轻量查询，防止免费项目 7 天无活动自动暂停。
+# 密钥：SUPABASE_URL、SUPABASE_ANON_KEY（仓库 Settings → Secrets and variables → Actions）。
+# 只用 anon key 做只读查询，不用 service_role key。
+name: supabase-keepalive
+
+on:
+  schedule:
+    # 每天 UTC 01:00（北京时间 09:00）
+    - cron: "0 1 * * *"
+  workflow_dispatch: # 手动触发，部署后点一下验证
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase (light queries)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Missing SUPABASE_URL or SUPABASE_ANON_KEY secret"
+            exit 1
+          fi
+
+          # 1) 查 tasks 表 1 行（轻量读，产生一次数据库活动）
+          echo "== Query tasks (limit 1) =="
+          curl -fsS -o /tmp/tasks.json -w "HTTP %{http_code}\n" \
+            "${SUPABASE_URL}/rest/v1/tasks?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+          cat /tmp/tasks.json; echo
+
+          # 2) 查 usage_ledger 表 1 行（第二条轻量查询）
+          echo "== Query usage_ledger (limit 1) =="
+          curl -fsS -o /tmp/usage.json -w "HTTP %{http_code}\n" \
+            "${SUPABASE_URL}/rest/v1/usage_ledger?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
+          cat /tmp/usage.json; echo
+
+          echo "Supabase keepalive OK at $(date -u +%FT%TZ)"

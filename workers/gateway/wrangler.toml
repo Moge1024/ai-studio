@@ -1,0 +1,25 @@
+# Cloudflare Workers API 网关配置
+# 部署：cd workers/gateway && npx wrangler login && npx wrangler deploy
+# 密钥用 wrangler secret put 设置（不要写进本文件）：
+#   npx wrangler secret put OPENROUTER_API_KEY
+#   npx wrangler secret put GATEWAY_SECRET
+
+name = "ai-studio-gateway"
+main = "src/index.js"
+compatibility_date = "2026-11-09"
+
+# 默认免费模型：不填则代码里走 openrouter/free 路由。
+# 这里是普通环境变量（非敏感），可以明文写；留空表示用代码默认值。
+[vars]
+FREE_MODEL = ""
+
+# --- 可选：KV 限流计数（推荐绑定，见 src/index.js 顶部注释）---
+# 绑定后每日 50 次限流在所有实例间共享；不绑定时限流退化为“放行并依赖
+# OpenRouter 自身的免费 50 次/天上限”，网关不再硬拦。
+# 开通步骤：
+#   1. npx wrangler kv namespace create RATE_LIMIT_KV
+#   2. 把返回的 id 填进下面 kv_namespaces 的 id
+#   3. 重新 npx wrangler deploy
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "YOUR_KV_NAMESPACE_ID_HERE"

@@ -1,4 +1,4 @@
-# 每日用量汇总（UTC 2026-11-24）
+# 每日用量汇总（UTC 2026-11-25）
 
 > 由 .github/workflows/daily-usage-summary.yml 每天自动生成；查不到的项如实写“未接入”，不编造数字。
 
@@ -19,4 +19,4 @@
 - supabase-keepalive：每天 UTC 01:00，见 Actions 页运行记录
 - cloady-keepalive：每天 UTC 01:30，见 Actions 页运行记录
 
-生成时间（UTC）：2026-11-24T11:58:50Z
+生成时间（UTC）：2026-11-25T10:51:09Z
